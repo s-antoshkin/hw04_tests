@@ -15,7 +15,7 @@ class TestGroupPaginatorView:
             response = client.get(f'/group/{few_posts_with_group.group.slug}/')
         assert response.status_code != 404, 'Страница `/group/<slug>/` не найдена, проверьте этот адрес в *urls.py*'
         assert 'page_obj' in response.context, (
-            'Проверьте, что передали переменную `page_obj` в контекст страницы `/group/<slug>/`'
+            'Проверьте, что передали переменную `page` в контекст страницы `/group/<slug>/`'
         )
         assert isinstance(response.context['page_obj'], Page), (
             'Проверьте, что переменная `page_obj` на странице `/group/<slug>/` типа `Page`'
