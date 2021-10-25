@@ -1,7 +1,7 @@
 from django.test import Client, TestCase
 from django.urls import reverse
-from posts.forms import PostForm
-from ..models import Post, User, Group
+
+from ..models import Group, Post, User
 
 
 class PostFormTests(TestCase):
@@ -17,13 +17,11 @@ class PostFormTests(TestCase):
         cls.test_post = Post.objects.create(
             text="Текст поста", author=cls.test_author, group=cls.group
         )
-        cls.form = PostForm()
 
     def setUp(self):
         self.group = PostFormTests.group
-        self.test_user = PostFormTests.test_author
         self.authorized_client = Client()
-        self.authorized_client.force_login(self.test_user)
+        self.authorized_client.force_login(self.test_author)
 
     def test_create_post(self):
         """Валидная форма создает новый Post"""
@@ -39,10 +37,13 @@ class PostFormTests(TestCase):
             response,
             reverse(
                 "posts:profile",
-                kwargs={"username": self.test_user.username}
+                kwargs={"username": self.test_author.username}
             ),
         )
         self.assertEqual(Post.objects.count(), posts_count + 1)
+        new_post = Post.objects.all()[0]
+        self.assertEqual(new_post.text, form_data['text'])
+        self.assertEqual(new_post.group.id, form_data['group'])
 
     def test_edit_post(self):
         """Валидная форма изменяет существующий Post"""
@@ -62,12 +63,7 @@ class PostFormTests(TestCase):
                 kwargs={"post_id": self.test_post.id}
             ),
         )
-        response = self.authorized_client.get(
-            reverse(
-                "posts:post_detail",
-                kwargs={"post_id": self.test_post.id}
-            )
-        )
-        self.assertEqual(response.context.get("post").text, form_data["text"])
-        self.assertEqual(response.context.get("post").group, None)
+        edited_post = Post.objects.get(id=self.test_post.id)
+        self.assertEqual(edited_post.text, form_data["text"])
+        self.assertEqual(edited_post.group, None)
         self.assertEqual(Post.objects.count(), posts_count)

@@ -1,9 +1,9 @@
-from django.test import TestCase, Client
-from django.urls import reverse
-from django.contrib.auth import get_user_model
-from ..models import Post, User, Group
-
 from http import HTTPStatus
+
+from django.contrib.auth import get_user_model
+from django.test import Client, TestCase
+
+from ..models import Group, Post, User
 
 User = get_user_model()
 
@@ -25,11 +25,9 @@ class PostURLTests(TestCase):
         )
 
     def setUp(self):
-        self.test_post = PostURLTests.test_post
         self.guest_client = Client()
-        self.author = PostURLTests.test_author
         self.authorized_client_author = Client()
-        self.authorized_client_author.force_login(self.author)
+        self.authorized_client_author.force_login(self.test_author)
         self.not_author = User.objects.create(username="NotAuthor")
         self.authorized_client = Client()
         self.authorized_client.force_login(self.not_author)
@@ -37,24 +35,12 @@ class PostURLTests(TestCase):
     def test_urls_uses_correct_template(self):
         """URL-адрес использует соответствующий шаблон."""
         templates_url_names = {
-            reverse("posts:index"): "posts/index.html",
-            reverse(
-                "posts:group_list",
-                kwargs={"slug": self.test_post.group.slug}
-            ): "posts/group_list.html",
-            reverse(
-                "posts:profile",
-                kwargs={"username": self.author.username}
-            ): "posts/profile.html",
-            reverse(
-                "posts:post_detail",
-                kwargs={"post_id": self.test_post.id}
-            ): "posts/post_detail.html",
-            reverse("posts:post_create"): "posts/create.html",
-            reverse(
-                "posts:post_edit",
-                kwargs={"post_id": self.test_post.id}
-            ): "posts/create.html",
+            "/": "posts/index.html",
+            f"/group/{self.test_post.group.slug}/": "posts/group_list.html",
+            f"/profile/{self.test_author.username}/": "posts/profile.html",
+            f"/posts/{self.test_post.id}/": "posts/post_detail.html",
+            "/create/": "posts/create.html",
+            f"/posts/{self.test_post.id}/edit/": "posts/create.html",
         }
         for adress, template in templates_url_names.items():
             with self.subTest(adress=adress):
@@ -66,7 +52,7 @@ class PostURLTests(TestCase):
         urls = (
             "/",
             f"/group/{self.test_post.group.slug}/",
-            f"/profile/{self.author.username}/",
+            f"/profile/{self.test_author.username}/",
             f"/posts/{self.test_post.id}/",
             "/unexisting_page/",
         )

@@ -1,7 +1,8 @@
-import time
+import datetime
 
 from django import forms
 from django.contrib.auth import get_user_model
+from django.forms.models import model_to_dict
 from django.test import Client, TestCase
 from django.urls import reverse
 from mixer.backend.django import mixer
@@ -19,8 +20,6 @@ class PostPagesTests(TestCase):
         cls.user_1 = mixer.blend(User)
         cls.group_1 = mixer.blend(Group)
         mixer.cycle(23).blend(Post, group=cls.group_1, author=cls.user_1)
-        # Задержка для "ручного поста" -> "самый новый"
-        time.sleep(0.1)
         cls.test_post = Post.objects.create(
             text="Текст поста",
             author=cls.test_author,
@@ -30,18 +29,16 @@ class PostPagesTests(TestCase):
                 description="ТестовоеОписание",
             ),
         )
+        cls.test_post.pub_date += datetime.timedelta(days=1)
+        cls.test_post.save()
 
     def setUp(self):
-        self.test_post = PostPagesTests.test_post
         self.guest_client = Client()
-        self.author = PostPagesTests.test_author
         self.authorized_client_author = Client()
-        self.authorized_client_author.force_login(self.author)
+        self.authorized_client_author.force_login(self.test_author)
         self.not_author = User.objects.create(username="NotAuthor")
         self.authorized_client = Client()
         self.authorized_client.force_login(self.not_author)
-        self.user_1 = PostPagesTests.user_1
-        self.group_1 = PostPagesTests.group_1
 
     def test_first_page_contains_ten_records(self):
         """Количество постов на странице равно 10."""
@@ -65,23 +62,33 @@ class PostPagesTests(TestCase):
         в group_list и profile - по три.
         """
         reverse_names = {
-            "index": reverse("posts:index") + "?page=3",
-            "group_list": reverse(
-                "posts:group_list", kwargs={"slug": self.group_1.slug}
-            )
-            + "?page=3",
-            "profile": reverse(
-                "posts:profile", kwargs={"username": self.user_1.username}
-            )
-            + "?page=3",
+            "index": (reverse("posts:index") + "?page=3", 4),
+            "group_list": (
+                reverse(
+                    "posts:group_list",
+                    kwargs={"slug": self.group_1.slug}
+                )
+                + "?page=3",
+                3,
+            ),
+            "profile": (
+                reverse(
+                    "posts:profile",
+                    kwargs={"username": self.user_1.username}
+                )
+                + "?page=3",
+                3,
+            ),
         }
-        for namespace, reverse_name in reverse_names.items():
+        for namespace, reverse_list in reverse_names.items():
+            reverse_name = reverse_list[0]
+            post_count = reverse_list[1]
             with self.subTest(reverse_name=reverse_name):
                 response = self.client.get(reverse_name)
-                if namespace == "index":
-                    self.assertEqual(len(response.context["page_obj"]), 4)
-                else:
-                    self.assertEqual(len(response.context["page_obj"]), 3)
+                self.assertEqual(
+                    len(response.context["page_obj"]),
+                    post_count
+                )
 
     def test_pages_show_correct_context(self):
         """
@@ -94,25 +101,21 @@ class PostPagesTests(TestCase):
                 "posts:group_list", kwargs={"slug": self.test_post.group.slug}
             ),
             "profile": reverse(
-                "posts:profile", kwargs={
-                    "username": self.test_post.author.username
-                }
+                "posts:profile",
+                kwargs={"username": self.test_post.author.username}
             ),
         }
         for namespace, reverse_name in reverse_names.items():
             with self.subTest(reverse_name=reverse_name):
                 response = self.client.get(reverse_name)
                 first_object = response.context["page_obj"][0]
-                post_id_0 = first_object.id
-                post_text_0 = first_object.text
-                post_pub_date_0 = first_object.pub_date
-                post_author_0 = first_object.author
-                post_group_0 = first_object.group
-                self.assertEqual(post_id_0, self.test_post.id)
-                self.assertEqual(post_text_0, self.test_post.text)
-                self.assertEqual(post_pub_date_0, self.test_post.pub_date)
-                self.assertEqual(post_author_0, self.test_post.author)
-                self.assertEqual(post_group_0, self.test_post.group)
+                post_fields = model_to_dict(first_object)
+                test_post = model_to_dict(self.test_post)
+                for key_field in post_fields:
+                    self.assertEqual(
+                        post_fields[key_field],
+                        test_post[key_field]
+                    )
                 if namespace == "profile":
                     post_count_0 = response.context["post_count"]
                     self.assertEqual(post_count_0, 1)
@@ -120,34 +123,17 @@ class PostPagesTests(TestCase):
     def test_post_detail_page_show_correct_context(self):
         """Шаблон post_detail сформирован с правильным контекстом."""
         response = self.authorized_client.get(
-            reverse("posts:post_detail", kwargs={
-                "post_id": self.test_post.id
-            })
-        )
-        self.assertEqual(
-            response.context.get("post").text,
-            self.test_post.text
-        )
-        self.assertEqual(
-            response.context.get("post").pub_date,
-            self.test_post.pub_date,
-        )
-        self.assertEqual(
-            response.context.get("post").author,
-            self.test_post.author
+            reverse(
+                "posts:post_detail",
+                kwargs={"post_id": self.test_post.id}
+            )
         )
         self.assertEqual(response.context.get("post_count"), 1)
-        self.assertEqual(
-            response.context.get("post").group.title,
-            self.test_post.group.title
-        )
-        self.assertEqual(
-            response.context.get("post").group.slug, self.test_post.group.slug
-        )
-        self.assertEqual(
-            response.context.get("post").group.description,
-            self.test_post.group.description,
-        )
+        post_object = response.context.get("post")
+        post_fields = model_to_dict(post_object)
+        test_post = model_to_dict(self.test_post)
+        for key_field in post_fields:
+            self.assertEqual(post_fields[key_field], test_post[key_field])
 
     def test_post_create_page_show_correct_context(self):
         """Шаблон post_create сформирован с правильным контекстом."""
@@ -188,3 +174,30 @@ class PostPagesTests(TestCase):
             with self.subTest(value=value):
                 form_field = response.context.get("form").fields.get(value)
                 self.assertIsInstance(form_field, expected)
+
+    def test_pages_contains_test_post(self):
+        """Страницы index, group_list, profile
+        содержат созданный пост
+        """
+        reverse_names = {
+            "index": reverse("posts:index"),
+            "group_list": reverse(
+                "posts:group_list", kwargs={"slug": self.test_post.group.slug}
+            ),
+            "profile": reverse(
+                "posts:profile", kwargs={
+                    "username": self.test_post.author.username
+                }
+            ),
+        }
+        for namespace, reverse_name in reverse_names.items():
+            with self.subTest(reverse_name=reverse_name):
+                response = self.client.get(reverse_name)
+                self.assertIn(self.test_post, response.context["page_obj"])
+
+    def test_post_not_present_in_other_group_page(self):
+        """Пост не присутствует в другой группе"""
+        response = self.client.get(
+            reverse("posts:group_list", kwargs={"slug": self.group_1.slug})
+        )
+        self.assertIsNot(self.test_post, response.context["page_obj"])
