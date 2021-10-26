@@ -111,11 +111,7 @@ class PostPagesTests(TestCase):
                 first_object = response.context["page_obj"][0]
                 post_fields = model_to_dict(first_object)
                 test_post = model_to_dict(self.test_post)
-                for key_field in post_fields:
-                    self.assertEqual(
-                        post_fields[key_field],
-                        test_post[key_field]
-                    )
+                self.assertDictEqual(post_fields, test_post)
                 if namespace == "profile":
                     post_count_0 = response.context["post_count"]
                     self.assertEqual(post_count_0, 1)
@@ -132,8 +128,7 @@ class PostPagesTests(TestCase):
         post_object = response.context.get("post")
         post_fields = model_to_dict(post_object)
         test_post = model_to_dict(self.test_post)
-        for key_field in post_fields:
-            self.assertEqual(post_fields[key_field], test_post[key_field])
+        self.assertDictEqual(post_fields, test_post)
 
     def test_post_create_page_show_correct_context(self):
         """Шаблон post_create сформирован с правильным контекстом."""
@@ -179,25 +174,33 @@ class PostPagesTests(TestCase):
         """Страницы index, group_list, profile
         содержат созданный пост
         """
+        new_post = Post.objects.create(
+            text="Текст нового поста",
+            author=self.test_author,
+            group=Group.objects.create(
+                title="Заголовок Новой Группы",
+                slug="test_slug_new",
+                description="Тут должно быть описание новой группы",
+            ),
+        )
         reverse_names = {
             "index": reverse("posts:index"),
             "group_list": reverse(
-                "posts:group_list", kwargs={"slug": self.test_post.group.slug}
+                "posts:group_list", kwargs={"slug": new_post.group.slug}
             ),
             "profile": reverse(
                 "posts:profile", kwargs={
-                    "username": self.test_post.author.username
+                    "username": new_post.author.username
                 }
             ),
         }
         for namespace, reverse_name in reverse_names.items():
             with self.subTest(reverse_name=reverse_name):
                 response = self.client.get(reverse_name)
-                self.assertIn(self.test_post, response.context["page_obj"])
+                self.assertIn(new_post, response.context["page_obj"])
 
-    def test_post_not_present_in_other_group_page(self):
-        """Пост не присутствует в другой группе"""
+        # Проверка на отсутсвие нового поста в другой группе
         response = self.client.get(
             reverse("posts:group_list", kwargs={"slug": self.group_1.slug})
         )
-        self.assertIsNot(self.test_post, response.context["page_obj"])
+        self.assertNotIn(new_post, response.context["page_obj"])

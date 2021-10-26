@@ -19,7 +19,6 @@ class PostFormTests(TestCase):
         )
 
     def setUp(self):
-        self.group = PostFormTests.group
         self.authorized_client = Client()
         self.authorized_client.force_login(self.test_author)
 
@@ -44,6 +43,7 @@ class PostFormTests(TestCase):
         new_post = Post.objects.all()[0]
         self.assertEqual(new_post.text, form_data['text'])
         self.assertEqual(new_post.group.id, form_data['group'])
+        self.assertEqual(new_post.author, self.test_author)
 
     def test_edit_post(self):
         """Валидная форма изменяет существующий Post"""
